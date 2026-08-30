@@ -72,12 +72,14 @@ jobs:
 
       - name: Compile and create Setup.exe
         shell: pwsh
-        run: autobuild build -A 64 -c ReleaseFS_open
+        run: autobuild build -A 64 -c ReleaseFS_open --no-configure
 
       - name: Verify installer and create checksum
         shell: pwsh
         run: |
-          $installer = Get-ChildItem -Path "build-*\newview\Release\*Setup.exe" -File | Select-Object -First 1
+          $installer = Get-ChildItem -Path "build-*" -Filter "*Setup.exe" -File -Recurse |
+            Sort-Object LastWriteTimeUtc -Descending |
+            Select-Object -First 1
           if (-not $installer) {
             throw "The Windows installer was not generated."
           }
@@ -90,7 +92,9 @@ jobs:
         with:
           name: NewLifeItaly-Viewer-Windows-x64
           path: |
-            build-*/newview/Release/*Setup.exe
-            build-*/newview/Release/*Setup.exe.sha256
+            build-*/*Setup.exe
+            build-*/*Setup.exe.sha256
+            build-*/**/*Setup.exe
+            build-*/**/*Setup.exe.sha256
           if-no-files-found: error
           retention-days: 14
