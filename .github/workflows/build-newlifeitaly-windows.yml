@@ -46,6 +46,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Python build dependencies failed" }
           choco install nsis -y --no-progress
           if ($LASTEXITCODE -ne 0) { throw "NSIS installation failed" }
+          npm install --global rcedit
+          if ($LASTEXITCODE -ne 0) { throw "rcedit installation failed" }
           "C:\Program Files\Git\usr\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           "C:\Program Files (x86)\NSIS" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
@@ -171,6 +173,12 @@ jobs:
 
           $buildDir = "build-vc${env:AUTOBUILD_VSVER}-64"
           if (-not (Test-Path -LiteralPath $buildDir)) { throw "Build directory not found: $buildDir" }
+
+          $compiledViewer = Join-Path $buildDir "newview\\Release\\firestorm-bin.exe"
+          if (-not (Test-Path -LiteralPath $compiledViewer)) { throw "Compiled Viewer executable not found: $compiledViewer" }
+          rcedit $compiledViewer --set-icon "newlifeitaly\\branding\\icons\\firestorm_icon.ico"
+          if ($LASTEXITCODE -ne 0) { throw "Embedding NewLifeItaly icon into Viewer EXE failed" }
+
           cmake --build $buildDir --config Release --target llpackage
           if ($LASTEXITCODE -ne 0) { throw "llpackage failed" }
 
