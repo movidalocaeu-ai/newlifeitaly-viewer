@@ -49,15 +49,3 @@ diff --git a/indra/newview/viewer_manifest.py b/indra/newview/viewer_manifest.py
  
      def exec_name(self):
          # <FS:Ansariel> Same as app_name_oneword()
-diff --git a/indra/newview/skins/default/xui/en/floater_preferences.xml b/indra/newview/skins/default/xui/en/floater_preferences.xml
---- a/indra/newview/skins/default/xui/en/floater_preferences.xml
-+++ b/indra/newview/skins/default/xui/en/floater_preferences.xml
-@@ -207,7 +207,9 @@
-          help_topic="preferences_firestorm_tab"
-          name="firestorm" />
-        <panel
-+         enabled="false"
-+         visible="false"
-          class="panel_preference_opensim"
-          filename="panel_preferences_opensim.xml"
-          label="Opensim"
