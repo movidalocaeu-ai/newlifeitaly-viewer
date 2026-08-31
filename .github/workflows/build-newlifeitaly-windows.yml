@@ -61,6 +61,19 @@ jobs:
           [IO.File]::WriteAllBytes($archive, [Convert]::FromBase64String($encoded))
           & "$env:SystemRoot\System32\tar.exe" -xzf $archive -C "indra\newview\icons\release-os"
 
+          # Replace every Windows-facing icon with the user-supplied NewLifeItaly logo.
+          Copy-Item "newlifeitaly\branding\icons\firestorm_*.png" "indra\newview\icons\release-os\" -Force
+          Copy-Item "newlifeitaly\branding\icons\firestorm_icon.ico" "indra\newview\icons\release-os\firestorm_icon.ico" -Force
+          Add-Type -AssemblyName System.Drawing
+          $sourcePng = [System.Drawing.Image]::FromFile((Resolve-Path "newlifeitaly\branding\icons\firestorm_256.png"))
+          try {
+            $bitmap = New-Object System.Drawing.Bitmap $sourcePng
+            $bitmap.Save((Join-Path $PWD "indra\newview\icons\release-os\firestorm_256.bmp"), [System.Drawing.Imaging.ImageFormat]::Bmp)
+            $bitmap.Dispose()
+          } finally {
+            $sourcePng.Dispose()
+          }
+
       - name: Configure official NewLifeItaly build
         shell: pwsh
         run: |

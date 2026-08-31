@@ -94,24 +94,6 @@ index 0553f62c..6ccd87d8 100644
             is_running_parameters="speak"
             checkbox_control="PushToTalkToggle"
             />
-+  <command name="nli_camera"
-+           available_in_toybox="true"
-+           icon="Command_View_Icon"
-+           label_ref="Command_NLI_Camera_Label"
-+           tooltip_ref="Command_NLI_Camera_Tooltip"
-+           execute_function="NLI.ToggleCamera"
-+           is_enabled_function="NLI.MediaAvailable"
-+           is_running_function="NLI.CameraOn"
-+           />
-+  <command name="nli_microphone"
-+           available_in_toybox="true"
-+           icon="Command_Speak_Icon"
-+           label_ref="Command_NLI_Microphone_Label"
-+           tooltip_ref="Command_NLI_Microphone_Tooltip"
-+           execute_function="NLI.ToggleMicrophone"
-+           is_enabled_function="NLI.MediaAvailable"
-+           is_running_function="NLI.MicrophoneOn"
-+           />
 +  <command name="nli_multiview"
 +           available_in_toybox="true"
 +           icon="Command_People_Icon"
@@ -216,6 +198,7 @@ index 00000000..8c295ddb
 +#include "lluri.h"
 +#include "llviewercontrol.h"
 +#include "llviewerregion.h"
++#include "llviewerwindow.h"
 +
 +#include <boost/algorithm/string.hpp>
 +
@@ -255,6 +238,18 @@ index 00000000..8c295ddb
 +void LLFloaterNLIMedia::onOpen(const LLSD& key)
 +{
 +    LLFloater::onOpen(key);
++    // Open as a narrow right-hand camera rail without covering the avatar.
++    if (gFloaterView)
++    {
++        const LLRect view_rect = gFloaterView->getRect();
++        const S32 margin = 8;
++        const S32 rail_width = llmin(285, view_rect.getWidth() - (margin * 2));
++        const S32 rail_height = llmin(760, view_rect.getHeight() - (margin * 2));
++        setShape(LLRect(view_rect.mRight - rail_width - margin,
++                        view_rect.mTop - margin,
++                        view_rect.mRight - margin,
++                        view_rect.mTop - rail_height - margin));
++    }
 +    ensureLoaded();
 +}
 +
@@ -843,8 +838,6 @@ index 144281f6..dcce8b94 100644
       <command name="chat"/>
       <command name="speak"/>
       <command name="voice"/>
-+     <command name="nli_camera"/>
-+     <command name="nli_microphone"/>
 +     <command name="nli_multiview"/>
       <command name="facebook"/>
       <command name="move"/>
@@ -860,13 +853,13 @@ index 00000000..a9655c70
 + can_close="true"
 + can_minimize="true"
 + can_resize="true"
-+ height="340"
-+ min_height="300"
-+ min_width="640"
++ height="760"
++ min_height="360"
++ min_width="260"
 + name="nli_media"
 + save_rect="false"
 + title="NewLifeItaly Cam &amp; Microphone"
-+ width="1100">
++ width="285">
 +  <floater.string name="loading_text">Connecting to the regional media service…</floater.string>
 +  <floater.string name="connected_text">Connected. Regional permissions are being checked…</floater.string>
 +  <floater.string name="authenticating_text">Verifying the avatar session…</floater.string>
@@ -878,6 +871,7 @@ index 00000000..a9655c70
 +   height="22"
 +   left="12"
 +   name="status_text"
++   visible="false"
 +   right="-104"
 +   top="10"
 +   value="Connecting to the regional media service…" />
@@ -886,6 +880,7 @@ index 00000000..a9655c70
 +   height="24"
 +   label="Retry"
 +   name="retry_btn"
++   visible="false"
 +   right="-12"
 +   top="8"
 +   width="82" />
@@ -896,6 +891,7 @@ index 00000000..a9655c70
 +   label="Camera"
 +   left="12"
 +   name="camera_btn"
++   visible="false"
 +   top="40"
 +   width="120" />
 +  <button
@@ -905,6 +901,7 @@ index 00000000..a9655c70
 +   label="Microphone"
 +   left_pad="8"
 +   name="microphone_btn"
++   visible="false"
 +   top_delta="0"
 +   width="120" />
 +  <text
@@ -912,21 +909,22 @@ index 00000000..a9655c70
 +   height="30"
 +   left_pad="14"
 +   name="region_policy_hint"
++   visible="false"
 +   right="-12"
 +   top_delta="5"
 +   value="The owner can disable camera or microphone for this region." />
 +  <web_browser
-+   border_visible="true"
-+   bottom="-12"
++   border_visible="false"
++   bottom="0"
 +   follows="all"
 +   focus_on_click="true"
 +   initial_mime_type="text/html"
-+   left="12"
++   left="0"
 +   media_stream_enabled="true"
 +   name="media_browser"
-+   right="-12"
++   right="0"
 +   start_url=""
-+   top="80"
++   top="0"
 +   trusted_content="false" />
 +</floater>
 diff --git a/indra/newview/skins/default/xui/en/strings.xml b/indra/newview/skins/default/xui/en/strings.xml
@@ -948,7 +946,7 @@ index e80d2ae7..3bea064c 100644
    <string name="Command_Speak_Label">Speak</string>
 +  <string name="Command_NLI_Camera_Label">NewLifeItaly Cam</string>
 +  <string name="Command_NLI_Microphone_Label">NewLifeItaly Microphone</string>
-+  <string name="Command_NLI_Multiview_Label">NewLifeItaly Multiview</string>
++  <string name="Command_NLI_Multiview_Label">NewLifeItaly Media</string>
    <string name="Command_View_Label">Camera controls</string>
  <!-- Ansariel: Renamed for FS (FIRE-5019)
    <string name="Command_Voice_Label">Voice settings</string>-->
@@ -958,7 +956,7 @@ index e80d2ae7..3bea064c 100644
    <string name="Command_Speak_Tooltip">Speak with people nearby using your microphone</string>
 +  <string name="Command_NLI_Camera_Tooltip">Turn your regional camera on or off</string>
 +  <string name="Command_NLI_Microphone_Tooltip">Turn your regional microphone on or off</string>
-+  <string name="Command_NLI_Multiview_Tooltip">Open the regional webcam grid</string>
++  <string name="Command_NLI_Multiview_Tooltip">Open NewLifeItaly camera and microphone</string>
    <string name="Command_View_Tooltip">Changing camera angle</string>
    <string name="Command_Voice_Tooltip">Volume controls for calls and people near you in world</string>
  <!-- Firestorm commands -->
@@ -998,7 +996,7 @@ index 0146dfce..674286a6 100644
 +		Microfono NewLifeItaly
 +	</string>
 +	<string name="Command_NLI_Multiview_Label">
-+		Multiview NewLifeItaly
++		Cam e Microfono NewLifeItaly
 +	</string>
  	<string name="Command_View_Label">
  		Controlli Camera
@@ -1014,7 +1012,7 @@ index 0146dfce..674286a6 100644
 +		Attiva o disattiva il microfono nella regione
 +	</string>
 +	<string name="Command_NLI_Multiview_Tooltip">
-+		Apri la griglia delle webcam della regione
++		Apri Cam e Microfono NewLifeItaly
 +	</string>
  	<string name="Command_View_Tooltip">
  		Modifica angolo della telecamera
@@ -1053,3 +1051,19 @@ index f8d9af9b..8f712a6b 100755
      def exec_name(self):
          # <FS:Ansariel> Same as app_name_oneword()
 
+
+diff --git a/indra/newview/skins/default/xui/en/panel_preferences_opensim.xml b/indra/newview/skins/default/xui/en/panel_preferences_opensim.xml
+--- a/indra/newview/skins/default/xui/en/panel_preferences_opensim.xml
++++ b/indra/newview/skins/default/xui/en/panel_preferences_opensim.xml
+@@ -18,9 +18,11 @@
+  left="1"
+  right="-1"
+  name="tabs"
+  tab_min_width="50"
+  tab_position="top" >
+   <panel
++  enabled="false"
++  visible="false"
+   border="false"
+   follows="all"
+   height="480"
