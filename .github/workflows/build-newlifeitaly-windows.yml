@@ -41,19 +41,45 @@ jobs:
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
+          if ($LASTEXITCODE -ne 0) { throw "pip upgrade failed with exit code $LASTEXITCODE" }
           python -m pip install -r requirements.txt "cmake>=4.1.2"
+          if ($LASTEXITCODE -ne 0) { throw "Python build dependencies failed with exit code $LASTEXITCODE" }
           choco install nsis -y --no-progress
+          if ($LASTEXITCODE -ne 0) { throw "NSIS installation failed with exit code $LASTEXITCODE" }
           "C:\Program Files\Git\usr\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           "C:\Program Files (x86)\NSIS" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Apply NewLifeItaly source and branding
         shell: pwsh
         run: |
-          git apply --check newlifeitaly/patches/viewer.patch
-          git apply newlifeitaly/patches/viewer.patch
+          $ErrorActionPreference = "Stop"
 
-          git apply --check newlifeitaly/patches/nli-hardening.patch
-          git apply newlifeitaly/patches/nli-hardening.patch
+          # viewer.patch contains legacy hand-edited hunk counts. --recount makes
+          # git derive the counts from the actual patch body instead of trusting
+          # stale headers. Every native exit code is checked explicitly so a
+          # failed patch can never be followed by a successful Firestorm build.
+          git apply --check --recount newlifeitaly/patches/viewer.patch
+          if ($LASTEXITCODE -ne 0) {
+            throw "viewer.patch validation failed with exit code $LASTEXITCODE"
+          }
+          git apply --recount newlifeitaly/patches/viewer.patch
+          if ($LASTEXITCODE -ne 0) {
+            throw "viewer.patch application failed with exit code $LASTEXITCODE"
+          }
+
+          git apply --check --recount newlifeitaly/patches/nli-hardening.patch
+          if ($LASTEXITCODE -ne 0) {
+            throw "nli-hardening.patch validation failed with exit code $LASTEXITCODE"
+          }
+          git apply --recount newlifeitaly/patches/nli-hardening.patch
+          if ($LASTEXITCODE -ne 0) {
+            throw "nli-hardening.patch application failed with exit code $LASTEXITCODE"
+          }
+
+          git diff --check
+          if ($LASTEXITCODE -ne 0) {
+            throw "Patched source failed git diff --check with exit code $LASTEXITCODE"
+          }
 
           $parts = Get-ChildItem "newlifeitaly\branding\release-os.tar.gz.b64.part*" | Sort-Object Name
           if (-not $parts) {
@@ -63,6 +89,9 @@ jobs:
           $archive = Join-Path $env:RUNNER_TEMP "newlifeitaly-release-os.tar.gz"
           [IO.File]::WriteAllBytes($archive, [Convert]::FromBase64String($encoded))
           & "$env:SystemRoot\System32\tar.exe" -xzf $archive -C "indra\newview\icons\release-os"
+          if ($LASTEXITCODE -ne 0) {
+            throw "NewLifeItaly branding archive extraction failed with exit code $LASTEXITCODE"
+          }
 
           # Replace Firestorm PNG/BMP branding used by the OpenSim release skin.
           Copy-Item "newlifeitaly\branding\icons\firestorm_*.png" "indra\newview\icons\release-os\" -Force
@@ -107,6 +136,8 @@ jobs:
       - name: Verify NewLifeItaly acceptance criteria in patched source
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
+
           $network = Get-Content "indra\newview\llviewernetwork.cpp" -Raw
           if ($network -notmatch 'NLI_GRID_NAME = "newlifeitaly\.com:8002"') {
             throw "NewLifeItaly grid constant is missing."
@@ -117,25 +148,37 @@ jobs:
           if ($network -notmatch 'mGrid = NLI_GRID_NAME') {
             throw "Startup is not hard-locked to NewLifeItaly."
           }
+          if ($network -notmatch 'if \(grid_iter->first == NLI_GRID_NAME\)') {
+            throw "Alternate grids are still exposed by getKnownGrids()."
+          }
+          if ($network -notmatch 'grid_name\.empty\(\) \|\| grid_name != NLI_GRID_NAME') {
+            throw "setGridChoice() is not rejecting alternate login grids."
+          }
 
           $commands = Get-Content "indra\newview\app_settings\commands.xml" -Raw
           if ($commands -notmatch 'name="voice"[\s\S]*?label_ref="Command_NLI_Multiview_Label"[\s\S]*?execute_parameters="nli_media"') {
             throw "Native voice command is not wired to the NewLifeItaly Cam/Mic panel."
+          }
+          if ($commands -match 'name="nli_multiview"') {
+            throw "A duplicate NewLifeItaly media toolbar command is still present."
           }
 
           $toolbar = Get-Content "indra\newview\lltoolbarview.cpp" -Raw
           if ($toolbar -notmatch 'const LLCommandId nli_media_command\("voice"\)') {
             throw "Mandatory Cam/Mic toolbar injection is missing."
           }
+          if ($toolbar -notmatch 'TOOLBAR_BOTTOM.*hasCommand\(nli_media_command\)') {
+            throw "Cam/Mic command is not guaranteed in the bottom toolbar."
+          }
 
           $preferences = Get-Content "indra\newview\skins\default\xui\en\floater_preferences.xml" -Raw
-          if ($preferences -match 'filename="panel_preferences_opensim\.xml"') {
-            throw "OpenSim/Grid Manager preferences are still exposed."
+          if ($preferences -notmatch '(?s)<panel\s+enabled="false"\s+visible="false"\s+class="panel_preference_opensim"') {
+            throw "OpenSim/Grid Manager preferences are not disabled and hidden."
           }
 
           $login = Get-Content "indra\newview\skins\default\xui\en\panel_login.xml" -Raw
-          if ($login -notmatch 'name="grid_combo"[\s\S]*?visible="false"') {
-            throw "Login grid selector is not hidden."
+          if ($login -notmatch '(?s)<combo_box\s+allow_text_entry="false"\s+visible="false".*?name="server_combo"') {
+            throw "Login grid selector server_combo is not hidden."
           }
 
           $resourceScript = Get-Content "indra\newview\res\viewerRes.rc" -Raw
@@ -148,7 +191,7 @@ jobs:
             throw "NSIS installer icon source is not the expected Firestorm icon slot."
           }
 
-          Write-Host "Acceptance checks passed: NLI-only login, no Grid Manager, mandatory Cam/Mic toolbar command, Windows icon wiring."
+          Write-Host "Acceptance checks passed: NewLifeItaly-only login, alternate grids hidden/rejected, mandatory Cam/Mic toolbar command, Windows icon wiring."
 
       - name: Configure official NewLifeItaly build
         shell: pwsh
@@ -158,11 +201,17 @@ jobs:
             --chan "NewLifeItaly Viewer Release" `
             --singlegrid "http://newlifeitaly.com:8002" `
             --openal
+          if ($LASTEXITCODE -ne 0) {
+            throw "autobuild configure failed with exit code $LASTEXITCODE"
+          }
 
       - name: Compile and create Windows package
         shell: pwsh
         run: |
           autobuild build -A 64 -c ReleaseFS_open --no-configure
+          if ($LASTEXITCODE -ne 0) {
+            throw "autobuild build failed with exit code $LASTEXITCODE"
+          }
 
           $buildDir = "build-vc${env:AUTOBUILD_VSVER}-64"
           if (-not (Test-Path -LiteralPath $buildDir)) {
