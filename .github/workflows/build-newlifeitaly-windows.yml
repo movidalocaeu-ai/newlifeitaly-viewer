@@ -124,7 +124,7 @@ jobs:
 
           $hash = (Get-FileHash -LiteralPath $stableInstaller -Algorithm SHA256).Hash.ToLower()
           $checksumPath = "$stableInstaller.sha256"
-          "$hash  NewLifeItaly-Viewer-Windows-x64-Setup.exe" | Set-Content -LiteralPath $checksumPath -Encoding ascii
+          "$hash  NewLifeItaly-Viewer-Windows-x64-Setup-v2.exe" | Set-Content -LiteralPath $checksumPath -Encoding ascii
 
           Write-Host "Installer source: $($installer.FullName)"
           Write-Host "Staged installer: $stableInstaller"
@@ -135,7 +135,7 @@ jobs:
         with:
           name: NewLifeItaly-Viewer-Windows-x64
           path: |
-            newlife-artifact/NewLifeItaly-Viewer-Windows-x64-Setup.exe
-            newlife-artifact/NewLifeItaly-Viewer-Windows-x64-Setup.exe.sha256
+            newlife-artifact/NewLifeItaly-Viewer-Windows-x64-Setup-v2.exe
+            newlife-artifact/NewLifeItaly-Viewer-Windows-x64-Setup-v2.exe.sha256
           if-no-files-found: error
           retention-days: 14
