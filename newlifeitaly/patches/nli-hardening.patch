@@ -1,22 +1,23 @@
 diff --git a/indra/newview/llviewernetwork.cpp b/indra/newview/llviewernetwork.cpp
-index 1c1fb40b..6bf8a4d2 100644
 --- a/indra/newview/llviewernetwork.cpp
 +++ b/indra/newview/llviewernetwork.cpp
-@@ -62,6 +62,13 @@ const std::string GRID_APP_SLURL_BASE = "app_slurl_base";
+@@ -62,7 +62,14 @@
+ const std::string GRID_SLURL_BASE = "slurl_base";
+ const std::string GRID_APP_SLURL_BASE = "app_slurl_base";
  
  const std::string DEFAULT_LOGIN_PAGE = "https://phoenixviewer.com/app/loginV3/";
  
-+// NewLifeItaly Viewer is a dedicated single-login-grid viewer.  Keep this
++// NewLifeItaly Viewer is a dedicated single-login-grid viewer. Keep this
 +// restriction in the networking layer so saved settings and --grid cannot
-+// bypass the UI restrictions.  Hypergrid travel after login is unaffected.
++// bypass the UI restrictions. Hypergrid travel after login is unaffected.
 +const std::string NLI_GRID_NAME = "newlifeitaly.com:8002";
 +const std::string NLI_GRID_LABEL = "NewLifeItaly";
 +const std::string NLI_LOGIN_URI = "http://newlifeitaly.com:8002";
 +
  const std::string MAIN_GRID_LOGIN_URI = "https://login.agni.lindenlab.com/cgi-bin/login.cgi";
  
- const std::string SL_UPDATE_QUERY_URL = "https://update.secondlife.com/update";
-@@ -137,6 +144,14 @@ void LLGridManager::initialize(const std::string& grid_file)
+@@ -136,7 +143,17 @@
+                   SL_UPDATE_QUERY_URL,
                    "https://my.secondlife-beta.com/",
                    "Aditi");
  
@@ -33,28 +34,27 @@ index 1c1fb40b..6bf8a4d2 100644
      // dump example grid file...
      //llofstream out_llsd_xml;
      //std::string default_grid_file = gDirUtilp->getExpandedFilename(LL_PATH_APP_SETTINGS, "default_grids.xml");
-@@ -229,6 +244,13 @@ void LLGridManager::initialize(const std::string& grid_file)
+@@ -240,7 +257,14 @@
+     {
+         // no grid was specified so default to maingrid
+         LL_INFOS("GridManager") << "Default grid to "<<MAINGRID<< LL_ENDL;
          mGrid = MAINGRID;
      }
  
-+    // Hard-lock startup to NewLifeItaly.  This deliberately runs after the
-+    // legacy command-line/current-grid resolution above so neither an old
-+    // CurrentGrid value nor --grid can redirect credentials to another grid.
++    // Hard-lock startup to NewLifeItaly after any legacy command-line or saved
++    // grid resolution, so credentials can never be redirected elsewhere.
 +    mGrid = NLI_GRID_NAME;
 +    gSavedSettings.setString("CurrentGrid", NLI_GRID_NAME);
 +    gSavedSettings.setString("CmdLineGridChoice", "");
 +
      LLControlVariablePtr grid_control = gSavedSettings.getControl("CurrentGrid");
-     if (grid_control.notNull())
-     {
-@@ -394,11 +416,16 @@ std::map<std::string, std::string> LLGridManager::getKnownGrids()
+@@ -405,13 +429,18 @@
+     for(LLSD::map_iterator grid_iter = mGridList.beginMap();
          grid_iter != mGridList.endMap();
          grid_iter++)
      {
 -        result[grid_iter->first] = grid_iter->second[GRID_LABEL_VALUE].asString();
-+        // Never expose alternate login grids to selectors or grid-management
-+        // UI.  Other internal grid metadata may still exist for OpenSim/HG.
-+        if (LLStringUtil::compareInsensitive(grid_iter->first, NLI_GRID_NAME) == 0)
++        if (grid_iter->first == NLI_GRID_NAME)
 +        {
 +            result[grid_iter->first] = grid_iter->second[GRID_LABEL_VALUE].asString();
 +        }
@@ -64,33 +64,32 @@ index 1c1fb40b..6bf8a4d2 100644
  }
  
  void LLGridManager::setGridChoice(const std::string& grid)
- {
-     // Set the grid choice based on a string.
+@@ -420,6 +449,13 @@
      LL_DEBUGS("GridManager")<<"requested "<<grid<<LL_ENDL;
      std::string grid_name = getGrid(grid); // resolved either the name or the id to the name
-+
-+    // NewLifeItaly Viewer must never authenticate against another grid.
-+    if (grid_name.empty() || LLStringUtil::compareInsensitive(grid_name, NLI_GRID_NAME) != 0)
+ 
++    // Never allow the login/authentication target to leave NewLifeItaly.
++    if (grid_name.empty() || grid_name != NLI_GRID_NAME)
 +    {
 +        LL_WARNS("GridManager") << "NewLifeItaly login lock rejected grid '" << grid << "'" << LL_ENDL;
 +        grid_name = NLI_GRID_NAME;
 +    }
- 
++
      if(!grid_name.empty())
      {
          LL_INFOS("GridManager")<<"setting "<<grid_name<<LL_ENDL;
 diff --git a/indra/newview/lltoolbarview.cpp b/indra/newview/lltoolbarview.cpp
-index 4a35b894..5c50e0e2 100644
 --- a/indra/newview/lltoolbarview.cpp
 +++ b/indra/newview/lltoolbarview.cpp
-@@ -386,6 +386,18 @@ bool LLToolBarView::loadToolbars(bool force_default)
+@@ -377,7 +377,19 @@
+                 LL_WARNS() << "Error adding command '" << command_params.name() << "' to bottom toolbar." << LL_ENDL;
+             }
          }
      }
  
 +    // NewLifeItaly: the native Firestorm "voice" command is repurposed by
-+    // viewer.patch as the Cam/Microphone panel.  Per-account toolbars.xml can
-+    // omit that command, so force it back into the bottom toolbar on every
-+    // load.  This guarantees a visible Cam/Mic entry for existing accounts.
++    // viewer.patch as the Cam/Microphone panel. Per-account toolbars.xml can
++    // omit that command, so force it into the bottom toolbar on every load.
 +    if (mToolbars[LLToolBarEnums::TOOLBAR_BOTTOM])
 +    {
 +        const LLCommandId nli_media_command("voice");
@@ -102,22 +101,3 @@ index 4a35b894..5c50e0e2 100644
 +
      // SL-18581: Don't show the starter avatar toolbar button for NUX users
      if (gAgent.isFirstLogin())
-     {
-diff --git a/indra/newview/skins/default/xui/en/floater_preferences.xml b/indra/newview/skins/default/xui/en/floater_preferences.xml
-index b780233f..7a1fa0e9 100644
---- a/indra/newview/skins/default/xui/en/floater_preferences.xml
-+++ b/indra/newview/skins/default/xui/en/floater_preferences.xml
-@@ -202,13 +202,6 @@
-          layout="topleft"
-          help_topic="preferences_firestorm_tab"
-          name="firestorm" />
--        <panel
--         class="panel_preference_opensim"
--         filename="panel_preferences_opensim.xml"
--         label="Opensim"
--         layout="topleft"
--         help_topic="preferences_opensim_tab"
--         name="opensim" />
-         <panel
-          class="panel_preference_backup"
-          filename="panel_preferences_backup.xml"
