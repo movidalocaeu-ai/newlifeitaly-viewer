@@ -119,7 +119,7 @@ jobs:
           $artifactDir = Join-Path $env:GITHUB_WORKSPACE "newlife-artifact"
           New-Item -ItemType Directory -Force -Path $artifactDir | Out-Null
 
-          $stableInstaller = Join-Path $artifactDir "NewLifeItaly-Viewer-Windows-x64-Setup.exe"
+          $stableInstaller = Join-Path $artifactDir "NewLifeItaly-Viewer-Windows-x64-Setup-v2.exe"
           Copy-Item -LiteralPath $installer.FullName -Destination $stableInstaller -Force
 
           $hash = (Get-FileHash -LiteralPath $stableInstaller -Algorithm SHA256).Hash.ToLower()
