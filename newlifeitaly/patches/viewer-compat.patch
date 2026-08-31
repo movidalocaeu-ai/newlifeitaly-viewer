@@ -1,0 +1,63 @@
+diff --git a/indra/newview/app_settings/commands.xml b/indra/newview/app_settings/commands.xml
+--- a/indra/newview/app_settings/commands.xml
++++ b/indra/newview/app_settings/commands.xml
+@@ -328,13 +328,14 @@
+   <command name="voice"
+            available_in_toybox="true"
+            icon="Command_Voice_Icon"
+-           label_ref="Command_Voice_Label"
+-           tooltip_ref="Command_Voice_Tooltip"
++           label_ref="Command_NLI_Multiview_Label"
++           tooltip_ref="Command_NLI_Multiview_Tooltip"
+            execute_function="Floater.Toggle"
+-           execute_parameters="fs_voice_controls"
++           execute_parameters="nli_media"
++           is_enabled_function="NLI.MediaAvailable"
+            is_running_function="Floater.IsOpen"
+-           is_running_parameters="fs_voice_controls"
++           is_running_parameters="nli_media"
+            />
+   <command name="quickprefs"
+            available_in_toybox="true"
+diff --git a/indra/newview/viewer_manifest.py b/indra/newview/viewer_manifest.py
+--- a/indra/newview/viewer_manifest.py
++++ b/indra/newview/viewer_manifest.py
+@@ -346,23 +346,10 @@
+     def app_name(self):
++        # NewLifeItaly distributes one OpenSim-only product. Keep the public
++        # application name stable instead of appending Firestorm OS/channel
++        # suffixes to it.
+         global CHANNEL_VENDOR_BASE
+-        channel_type=self.channel_type()
+-        #<FS:TS> LL uses "Viewer" in the name of their release package. We use "Release".
+-        #if channel_type == 'release':
+-        #    app_suffix='Viewer'
+-        #else:
+-        #    app_suffix=self.channel_variant()
+-        app_suffix=self.channel_variant()
+-
+-        #<FS:ND> tag "OS" after CHANNEL_VENDOR_BASE and before any suffix
+-        if self.fs_is_opensim():
+-            app_suffix = "OS" + app_suffix
+-        #</FS:ND>
+-
+-        #<FS:ND> Don't separate name by whitespace. This break a lot of things in the old FS installer logic.
+-        #return CHANNEL_VENDOR_BASE + ' ' + app_suffix
+-        return CHANNEL_VENDOR_BASE + app_suffix
+-        #</FS:ND>
++        return CHANNEL_VENDOR_BASE
+ 
+     def exec_name(self):
+         # <FS:Ansariel> Same as app_name_oneword()
+diff --git a/indra/newview/skins/default/xui/en/floater_preferences.xml b/indra/newview/skins/default/xui/en/floater_preferences.xml
+--- a/indra/newview/skins/default/xui/en/floater_preferences.xml
++++ b/indra/newview/skins/default/xui/en/floater_preferences.xml
+@@ -207,7 +207,9 @@
+          help_topic="preferences_firestorm_tab"
+          name="firestorm" />
+        <panel
++         enabled="false"
++         visible="false"
+          class="panel_preference_opensim"
+          filename="panel_preferences_opensim.xml"
+          label="Opensim"
