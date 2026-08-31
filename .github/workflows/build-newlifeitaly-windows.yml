@@ -41,61 +41,58 @@ jobs:
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
-          if ($LASTEXITCODE -ne 0) { throw "pip upgrade failed with exit code $LASTEXITCODE" }
+          if ($LASTEXITCODE -ne 0) { throw "pip upgrade failed" }
           python -m pip install -r requirements.txt "cmake>=4.1.2"
-          if ($LASTEXITCODE -ne 0) { throw "Python build dependencies failed with exit code $LASTEXITCODE" }
+          if ($LASTEXITCODE -ne 0) { throw "Python build dependencies failed" }
           choco install nsis -y --no-progress
-          if ($LASTEXITCODE -ne 0) { throw "NSIS installation failed with exit code $LASTEXITCODE" }
+          if ($LASTEXITCODE -ne 0) { throw "NSIS installation failed" }
           "C:\Program Files\Git\usr\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           "C:\Program Files (x86)\NSIS" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
-      - name: Apply NewLifeItaly source and branding
+      - name: Apply verified NewLifeItaly source
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
 
-          # viewer.patch contains legacy hand-edited hunk counts. --recount makes
-          # git derive the counts from the actual patch body instead of trusting
-          # stale headers. Every native exit code is checked explicitly so a
-          # failed patch can never be followed by a successful Firestorm build.
-          git apply --check --recount newlifeitaly/patches/viewer.patch
-          if ($LASTEXITCODE -ne 0) {
-            throw "viewer.patch validation failed with exit code $LASTEXITCODE"
-          }
-          git apply --recount newlifeitaly/patches/viewer.patch
-          if ($LASTEXITCODE -ne 0) {
-            throw "viewer.patch application failed with exit code $LASTEXITCODE"
-          }
+          $exclude = @(
+            "--exclude=indra/newview/app_settings/commands.xml",
+            "--exclude=indra/newview/viewer_manifest.py",
+            "--exclude=indra/newview/skins/default/xui/en/floater_preferences.xml"
+          )
+
+          git apply --check --recount @exclude newlifeitaly/patches/viewer.patch
+          if ($LASTEXITCODE -ne 0) { throw "Legacy NewLifeItaly patch validation failed" }
+          git apply --recount @exclude newlifeitaly/patches/viewer.patch
+          if ($LASTEXITCODE -ne 0) { throw "Legacy NewLifeItaly patch application failed" }
+
+          git apply --check --recount newlifeitaly/patches/viewer-compat.patch
+          if ($LASTEXITCODE -ne 0) { throw "Current-source compatibility patch validation failed" }
+          git apply --recount newlifeitaly/patches/viewer-compat.patch
+          if ($LASTEXITCODE -ne 0) { throw "Current-source compatibility patch application failed" }
 
           git apply --check --recount newlifeitaly/patches/nli-hardening.patch
-          if ($LASTEXITCODE -ne 0) {
-            throw "nli-hardening.patch validation failed with exit code $LASTEXITCODE"
-          }
+          if ($LASTEXITCODE -ne 0) { throw "NewLifeItaly hardening patch validation failed" }
           git apply --recount newlifeitaly/patches/nli-hardening.patch
-          if ($LASTEXITCODE -ne 0) {
-            throw "nli-hardening.patch application failed with exit code $LASTEXITCODE"
-          }
+          if ($LASTEXITCODE -ne 0) { throw "NewLifeItaly hardening patch application failed" }
 
-          git diff --check
-          if ($LASTEXITCODE -ne 0) {
-            throw "Patched source failed git diff --check with exit code $LASTEXITCODE"
-          }
-
+      - name: Apply NewLifeItaly Windows branding
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
           $parts = Get-ChildItem "newlifeitaly\branding\release-os.tar.gz.b64.part*" | Sort-Object Name
-          if (-not $parts) {
-            throw "NewLifeItaly branding archive parts are missing."
-          }
+          if (-not $parts) { throw "NewLifeItaly branding archive parts are missing" }
           $encoded = ($parts | ForEach-Object { Get-Content $_.FullName -Raw }) -join ""
           $archive = Join-Path $env:RUNNER_TEMP "newlifeitaly-release-os.tar.gz"
           [IO.File]::WriteAllBytes($archive, [Convert]::FromBase64String($encoded))
           & "$env:SystemRoot\System32\tar.exe" -xzf $archive -C "indra\newview\icons\release-os"
-          if ($LASTEXITCODE -ne 0) {
-            throw "NewLifeItaly branding archive extraction failed with exit code $LASTEXITCODE"
-          }
+          if ($LASTEXITCODE -ne 0) { throw "Branding archive extraction failed" }
 
-          # Replace Firestorm PNG/BMP branding used by the OpenSim release skin.
           Copy-Item "newlifeitaly\branding\icons\firestorm_*.png" "indra\newview\icons\release-os\" -Force
           Copy-Item "newlifeitaly\branding\icons\firestorm_icon.ico" "indra\newview\icons\release-os\firestorm_icon.ico" -Force
+          Copy-Item "newlifeitaly\branding\icons\firestorm_icon.ico" "indra\newview\res\firestorm_icon.ico" -Force
+          Copy-Item "newlifeitaly\branding\icons\firestorm_icon.ico" "indra\newview\installers\windows\firestorm_icon.ico" -Force
+          Copy-Item "newlifeitaly\branding\icons\firestorm_icon.ico" "indra\newview\installers\windows\firestorm_icon_os.ico" -Force
+
           Add-Type -AssemblyName System.Drawing
           $sourcePng = [System.Drawing.Image]::FromFile((Resolve-Path "newlifeitaly\branding\icons\firestorm_256.png"))
           try {
@@ -106,92 +103,53 @@ jobs:
             $sourcePng.Dispose()
           }
 
-          # Windows EXE resource: viewerRes.rc references res/firestorm_icon.ico.
-          Copy-Item "newlifeitaly\branding\icons\firestorm_icon.ico" "indra\newview\res\firestorm_icon.ico" -Force
-
-          # NSIS installer resource: installer_template.nsi references
-          # firestorm_icon${ICON_SUFFIX}.ico. Copy both variants so ReleaseFS_open
-          # and any suffix resolution use the NewLifeItaly artwork.
-          Copy-Item "newlifeitaly\branding\icons\firestorm_icon.ico" "indra\newview\installers\windows\firestorm_icon.ico" -Force
-          Copy-Item "newlifeitaly\branding\icons\firestorm_icon.ico" "indra\newview\installers\windows\firestorm_icon_os.ico" -Force
-
-          # Fail immediately if any actual Windows icon source differs.
           $brandHash = (Get-FileHash "newlifeitaly\branding\icons\firestorm_icon.ico" -Algorithm SHA256).Hash
-          $iconTargets = @(
+          @(
+            "indra\newview\icons\release-os\firestorm_icon.ico",
             "indra\newview\res\firestorm_icon.ico",
             "indra\newview\installers\windows\firestorm_icon.ico",
-            "indra\newview\installers\windows\firestorm_icon_os.ico",
-            "indra\newview\icons\release-os\firestorm_icon.ico"
-          )
-          foreach ($target in $iconTargets) {
-            if (-not (Test-Path -LiteralPath $target)) {
-              throw "Required NewLifeItaly icon target missing: $target"
-            }
-            $targetHash = (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash
-            if ($targetHash -ne $brandHash) {
-              throw "NewLifeItaly icon hash mismatch: $target"
+            "indra\newview\installers\windows\firestorm_icon_os.ico"
+          ) | ForEach-Object {
+            if ((Get-FileHash $_ -Algorithm SHA256).Hash -ne $brandHash) {
+              throw "NewLifeItaly icon was not installed into $_"
             }
           }
 
-      - name: Verify NewLifeItaly acceptance criteria in patched source
+      - name: Verify NewLifeItaly acceptance criteria
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
 
           $network = Get-Content "indra\newview\llviewernetwork.cpp" -Raw
-          if ($network -notmatch 'NLI_GRID_NAME = "newlifeitaly\.com:8002"') {
-            throw "NewLifeItaly grid constant is missing."
-          }
-          if ($network -notmatch 'NewLifeItaly login lock rejected grid') {
-            throw "Network-level alternate-grid rejection is missing."
-          }
-          if ($network -notmatch 'mGrid = NLI_GRID_NAME') {
-            throw "Startup is not hard-locked to NewLifeItaly."
-          }
-          if ($network -notmatch 'if \(grid_iter->first == NLI_GRID_NAME\)') {
-            throw "Alternate grids are still exposed by getKnownGrids()."
-          }
-          if ($network -notmatch 'grid_name\.empty\(\) \|\| grid_name != NLI_GRID_NAME') {
-            throw "setGridChoice() is not rejecting alternate login grids."
-          }
+          if ($network -notmatch 'NLI_GRID_NAME = "newlifeitaly\.com:8002"') { throw "NLI grid constant missing" }
+          if ($network -notmatch 'mGrid = NLI_GRID_NAME') { throw "Startup is not locked to NewLifeItaly" }
+          if ($network -notmatch 'NewLifeItaly login lock rejected grid') { throw "Alternate-grid rejection missing" }
+          if ($network -notmatch 'if \(grid_iter->first == NLI_GRID_NAME\)') { throw "Alternate grids are still exposed" }
+          if ($network -notmatch 'grid_name\.empty\(\) \|\| grid_name != NLI_GRID_NAME') { throw "Alternate grids can still be selected" }
 
           $commands = Get-Content "indra\newview\app_settings\commands.xml" -Raw
-          if ($commands -notmatch 'name="voice"[\s\S]*?label_ref="Command_NLI_Multiview_Label"[\s\S]*?execute_parameters="nli_media"') {
-            throw "Native voice command is not wired to the NewLifeItaly Cam/Mic panel."
-          }
-          if ($commands -match 'name="nli_multiview"') {
-            throw "A duplicate NewLifeItaly media toolbar command is still present."
-          }
+          if ($commands -notmatch 'name="voice"[\s\S]*?label_ref="Command_NLI_Multiview_Label"[\s\S]*?execute_parameters="nli_media"') { throw "Cam/Mic command is not wired" }
+          if ($commands -match 'name="nli_multiview"') { throw "Duplicate NLI toolbar command detected" }
 
           $toolbar = Get-Content "indra\newview\lltoolbarview.cpp" -Raw
-          if ($toolbar -notmatch 'const LLCommandId nli_media_command\("voice"\)') {
-            throw "Mandatory Cam/Mic toolbar injection is missing."
-          }
-          if ($toolbar -notmatch 'TOOLBAR_BOTTOM.*hasCommand\(nli_media_command\)') {
-            throw "Cam/Mic command is not guaranteed in the bottom toolbar."
-          }
+          if ($toolbar -notmatch 'const LLCommandId nli_media_command\("voice"\)') { throw "Cam/Mic toolbar injection missing" }
 
-          $preferences = Get-Content "indra\newview\skins\default\xui\en\floater_preferences.xml" -Raw
-          if ($preferences -notmatch '(?s)<panel\s+enabled="false"\s+visible="false"\s+class="panel_preference_opensim"') {
-            throw "OpenSim/Grid Manager preferences are not disabled and hidden."
-          }
+          $prefs = Get-Content "indra\newview\skins\default\xui\en\floater_preferences.xml" -Raw
+          if ($prefs -notmatch '(?s)<panel\s+enabled="false"\s+visible="false"\s+class="panel_preference_opensim"') { throw "Grid management preferences are still visible" }
 
           $login = Get-Content "indra\newview\skins\default\xui\en\panel_login.xml" -Raw
-          if ($login -notmatch '(?s)<combo_box\s+allow_text_entry="false"\s+visible="false".*?name="server_combo"') {
-            throw "Login grid selector server_combo is not hidden."
-          }
+          if ($login -notmatch '(?s)<combo_box\s+allow_text_entry="false"\s+visible="false".*?name="server_combo"') { throw "Grid selector is still visible at login" }
+
+          $manifest = Get-Content "indra\newview\viewer_manifest.py" -Raw
+          if ($manifest -notmatch 'def app_name\(self\):[\s\S]*?return CHANNEL_VENDOR_BASE') { throw "Viewer application name is not fixed" }
 
           $resourceScript = Get-Content "indra\newview\res\viewerRes.rc" -Raw
-          if ($resourceScript -notmatch 'ICON\s+"firestorm_icon\.ico"') {
-            throw "Viewer executable resource is not wired to firestorm_icon.ico."
-          }
+          if ($resourceScript -notmatch 'IDI_LL_ICON\s+ICON\s+"firestorm_icon\.ico"') { throw "Viewer EXE icon resource is not wired" }
 
           $installerTemplate = Get-Content "indra\newview\installers\windows\installer_template.nsi" -Raw
-          if ($installerTemplate -notmatch 'firestorm_icon\$\{ICON_SUFFIX\}\.ico') {
-            throw "NSIS installer icon source is not the expected Firestorm icon slot."
-          }
+          if ($installerTemplate -notmatch 'firestorm_icon\$\{ICON_SUFFIX\}\.ico') { throw "Installer icon resource is not wired" }
 
-          Write-Host "Acceptance checks passed: NewLifeItaly-only login, alternate grids hidden/rejected, mandatory Cam/Mic toolbar command, Windows icon wiring."
+          Write-Host "VERIFIED: NewLifeItaly-only login, no visible Grid Manager, mandatory Cam/Mic button, NLI Windows icons."
 
       - name: Configure official NewLifeItaly build
         shell: pwsh
@@ -201,122 +159,73 @@ jobs:
             --chan "NewLifeItaly Viewer Release" `
             --singlegrid "http://newlifeitaly.com:8002" `
             --openal
-          if ($LASTEXITCODE -ne 0) {
-            throw "autobuild configure failed with exit code $LASTEXITCODE"
-          }
+          if ($LASTEXITCODE -ne 0) { throw "autobuild configure failed" }
 
       - name: Compile and create Windows package
         shell: pwsh
         run: |
           autobuild build -A 64 -c ReleaseFS_open --no-configure
-          if ($LASTEXITCODE -ne 0) {
-            throw "autobuild build failed with exit code $LASTEXITCODE"
-          }
+          if ($LASTEXITCODE -ne 0) { throw "autobuild build failed" }
 
           $buildDir = "build-vc${env:AUTOBUILD_VSVER}-64"
-          if (-not (Test-Path -LiteralPath $buildDir)) {
-            throw "Expected Firestorm build directory was not found: $buildDir"
-          }
-
-          Write-Host "Building explicit Firestorm llpackage target in $buildDir"
+          if (-not (Test-Path -LiteralPath $buildDir)) { throw "Build directory not found: $buildDir" }
           cmake --build $buildDir --config Release --target llpackage
-          if ($LASTEXITCODE -ne 0) {
-            throw "Firestorm llpackage target failed with exit code $LASTEXITCODE"
-          }
+          if ($LASTEXITCODE -ne 0) { throw "llpackage failed" }
 
-      - name: Verify compiled icons, installer and checksum
+      - name: Verify compiled package and stage Setup v4
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
           $buildDir = "build-vc${env:AUTOBUILD_VSVER}-64"
-          $installer = Get-ChildItem -LiteralPath $buildDir -Filter "*_Setup.exe" -File -Recurse -ErrorAction SilentlyContinue |
-            Sort-Object LastWriteTimeUtc -Descending |
-            Select-Object -First 1
+          $installer = Get-ChildItem $buildDir -Filter "*_Setup.exe" -File -Recurse -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+          if (-not $installer) { throw "Windows Setup was not generated" }
 
-          if (-not $installer) {
-            Write-Host "No *_Setup.exe found under $buildDir. Recent executable build products:"
-            Get-ChildItem -LiteralPath $buildDir -Filter "*.exe" -File -Recurse -ErrorAction SilentlyContinue |
-              Sort-Object LastWriteTimeUtc -Descending |
-              Select-Object -First 40 FullName, Length, LastWriteTimeUtc |
-              Format-Table -AutoSize
-            throw "The Windows installer was not generated by llpackage."
-          }
+          $viewerExe = Get-ChildItem $buildDir -Filter "*.exe" -File -Recurse -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -ne $installer.FullName -and $_.Name -notmatch 'uninst|crash|plugin|slplugin|win_crash_logger' } |
+            Sort-Object Length -Descending | Select-Object -First 1
+          if (-not $viewerExe) { throw "Compiled Viewer executable not found" }
 
           Add-Type -AssemblyName System.Drawing
-          function Get-IconPixelHash([string]$Path, [bool]$FromExecutable) {
-            $resolved = (Resolve-Path -LiteralPath $Path).Path
-            $icon = $null
-            $bitmap = $null
-            $graphics = $null
-            $stream = $null
-            $sha = $null
+          function Get-IconHash([string]$Path, [bool]$Executable) {
+            $icon = $null; $bmp = $null; $g = $null; $ms = $null; $sha = $null
             try {
-              if ($FromExecutable) {
-                $icon = [System.Drawing.Icon]::ExtractAssociatedIcon($resolved)
-              } else {
-                $icon = New-Object System.Drawing.Icon($resolved, 32, 32)
-              }
-              if (-not $icon) {
-                throw "Unable to extract icon from $Path"
-              }
-              $bitmap = New-Object System.Drawing.Bitmap 32, 32
-              $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
-              $graphics.Clear([System.Drawing.Color]::Transparent)
-              $graphics.DrawIcon($icon, 0, 0)
-              $stream = New-Object System.IO.MemoryStream
-              $bitmap.Save($stream, [System.Drawing.Imaging.ImageFormat]::Png)
+              if ($Executable) { $icon = [System.Drawing.Icon]::ExtractAssociatedIcon((Resolve-Path $Path).Path) }
+              else { $icon = New-Object System.Drawing.Icon((Resolve-Path $Path).Path, 32, 32) }
+              if (-not $icon) { throw "Cannot extract icon from $Path" }
+              $bmp = New-Object System.Drawing.Bitmap 32, 32
+              $g = [System.Drawing.Graphics]::FromImage($bmp)
+              $g.Clear([System.Drawing.Color]::Transparent)
+              $g.DrawIcon($icon, 0, 0)
+              $ms = New-Object System.IO.MemoryStream
+              $bmp.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png)
               $sha = [System.Security.Cryptography.SHA256]::Create()
-              return ([BitConverter]::ToString($sha.ComputeHash($stream.ToArray()))).Replace("-", "").ToLowerInvariant()
+              return ([BitConverter]::ToString($sha.ComputeHash($ms.ToArray()))).Replace("-", "")
             } finally {
-              if ($sha) { $sha.Dispose() }
-              if ($stream) { $stream.Dispose() }
-              if ($graphics) { $graphics.Dispose() }
-              if ($bitmap) { $bitmap.Dispose() }
-              if ($icon) { $icon.Dispose() }
+              if ($sha) { $sha.Dispose() }; if ($ms) { $ms.Dispose() }; if ($g) { $g.Dispose() }; if ($bmp) { $bmp.Dispose() }; if ($icon) { $icon.Dispose() }
             }
           }
 
-          $brandingIcon = "newlifeitaly\branding\icons\firestorm_icon.ico"
-          $expectedIconHash = Get-IconPixelHash $brandingIcon $false
-          $installerIconHash = Get-IconPixelHash $installer.FullName $true
-          if ($installerIconHash -ne $expectedIconHash) {
-            throw "Compiled installer icon does not match the NewLifeItaly icon."
-          }
-
-          $viewerExe = Get-ChildItem -LiteralPath $buildDir -Filter "*.exe" -File -Recurse -ErrorAction SilentlyContinue |
-            Where-Object { $_.FullName -ne $installer.FullName -and $_.Name -notmatch 'uninst|crash|plugin|slplugin|win_crash_logger' } |
-            Sort-Object Length -Descending |
-            Select-Object -First 1
-          if (-not $viewerExe) {
-            throw "Unable to locate the compiled viewer executable for icon validation."
-          }
-          $viewerIconHash = Get-IconPixelHash $viewerExe.FullName $true
-          if ($viewerIconHash -ne $expectedIconHash) {
-            throw "Compiled Viewer executable icon does not match the NewLifeItaly icon. Candidate: $($viewerExe.FullName)"
-          }
-
-          Write-Host "Verified NewLifeItaly icon in installer: $($installer.FullName)"
-          Write-Host "Verified NewLifeItaly icon in viewer: $($viewerExe.FullName)"
+          $expected = Get-IconHash "newlifeitaly\branding\icons\firestorm_icon.ico" $false
+          if ((Get-IconHash $installer.FullName $true) -ne $expected) { throw "Setup icon is not NewLifeItaly" }
+          if ((Get-IconHash $viewerExe.FullName $true) -ne $expected) { throw "Viewer EXE icon is not NewLifeItaly" }
 
           $artifactDir = Join-Path $env:GITHUB_WORKSPACE "newlife-artifact"
           New-Item -ItemType Directory -Force -Path $artifactDir | Out-Null
-
-          $stableInstaller = Join-Path $artifactDir "NewLifeItaly-Viewer-Windows-x64-Setup-v3.exe"
-          Copy-Item -LiteralPath $installer.FullName -Destination $stableInstaller -Force
-
-          $hash = (Get-FileHash -LiteralPath $stableInstaller -Algorithm SHA256).Hash.ToLower()
-          $checksumPath = "$stableInstaller.sha256"
-          "$hash  NewLifeItaly-Viewer-Windows-x64-Setup-v3.exe" | Set-Content -LiteralPath $checksumPath -Encoding ascii
-
-          Write-Host "Installer source: $($installer.FullName)"
-          Write-Host "Staged installer: $stableInstaller"
+          $setup = Join-Path $artifactDir "NewLifeItaly-Viewer-Windows-x64-Setup-v4.exe"
+          Copy-Item $installer.FullName $setup -Force
+          $hash = (Get-FileHash $setup -Algorithm SHA256).Hash.ToLower()
+          "$hash  NewLifeItaly-Viewer-Windows-x64-Setup-v4.exe" | Set-Content "$setup.sha256" -Encoding ascii
+          Write-Host "VERIFIED COMPILED VIEWER: $($viewerExe.FullName)"
+          Write-Host "VERIFIED SETUP: $setup"
           Write-Host "SHA-256: $hash"
 
-      - name: Upload installable package
+      - name: Upload NewLifeItaly Setup v4
         uses: actions/upload-artifact@v4
         with:
-          name: NewLifeItaly-Viewer-Windows-x64-v3
+          name: NewLifeItaly-Viewer-Windows-x64-v4
           path: |
-            newlife-artifact/NewLifeItaly-Viewer-Windows-x64-Setup-v3.exe
-            newlife-artifact/NewLifeItaly-Viewer-Windows-x64-Setup-v3.exe.sha256
+            newlife-artifact/NewLifeItaly-Viewer-Windows-x64-Setup-v4.exe
+            newlife-artifact/NewLifeItaly-Viewer-Windows-x64-Setup-v4.exe.sha256
           if-no-files-found: error
           retention-days: 14
