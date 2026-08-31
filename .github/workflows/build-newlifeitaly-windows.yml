@@ -52,6 +52,9 @@ jobs:
           git apply --check newlifeitaly/patches/viewer.patch
           git apply newlifeitaly/patches/viewer.patch
 
+          git apply --check newlifeitaly/patches/nli-hardening.patch
+          git apply newlifeitaly/patches/nli-hardening.patch
+
           $parts = Get-ChildItem "newlifeitaly\branding\release-os.tar.gz.b64.part*" | Sort-Object Name
           if (-not $parts) {
             throw "NewLifeItaly branding archive parts are missing."
@@ -61,7 +64,7 @@ jobs:
           [IO.File]::WriteAllBytes($archive, [Convert]::FromBase64String($encoded))
           & "$env:SystemRoot\System32\tar.exe" -xzf $archive -C "indra\newview\icons\release-os"
 
-          # Replace every Windows-facing icon with the user-supplied NewLifeItaly logo.
+          # Replace Firestorm PNG/BMP branding used by the OpenSim release skin.
           Copy-Item "newlifeitaly\branding\icons\firestorm_*.png" "indra\newview\icons\release-os\" -Force
           Copy-Item "newlifeitaly\branding\icons\firestorm_icon.ico" "indra\newview\icons\release-os\firestorm_icon.ico" -Force
           Add-Type -AssemblyName System.Drawing
@@ -73,6 +76,79 @@ jobs:
           } finally {
             $sourcePng.Dispose()
           }
+
+          # Windows EXE resource: viewerRes.rc references res/firestorm_icon.ico.
+          Copy-Item "newlifeitaly\branding\icons\firestorm_icon.ico" "indra\newview\res\firestorm_icon.ico" -Force
+
+          # NSIS installer resource: installer_template.nsi references
+          # firestorm_icon${ICON_SUFFIX}.ico. Copy both variants so ReleaseFS_open
+          # and any suffix resolution use the NewLifeItaly artwork.
+          Copy-Item "newlifeitaly\branding\icons\firestorm_icon.ico" "indra\newview\installers\windows\firestorm_icon.ico" -Force
+          Copy-Item "newlifeitaly\branding\icons\firestorm_icon.ico" "indra\newview\installers\windows\firestorm_icon_os.ico" -Force
+
+          # Fail immediately if any actual Windows icon source differs.
+          $brandHash = (Get-FileHash "newlifeitaly\branding\icons\firestorm_icon.ico" -Algorithm SHA256).Hash
+          $iconTargets = @(
+            "indra\newview\res\firestorm_icon.ico",
+            "indra\newview\installers\windows\firestorm_icon.ico",
+            "indra\newview\installers\windows\firestorm_icon_os.ico",
+            "indra\newview\icons\release-os\firestorm_icon.ico"
+          )
+          foreach ($target in $iconTargets) {
+            if (-not (Test-Path -LiteralPath $target)) {
+              throw "Required NewLifeItaly icon target missing: $target"
+            }
+            $targetHash = (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash
+            if ($targetHash -ne $brandHash) {
+              throw "NewLifeItaly icon hash mismatch: $target"
+            }
+          }
+
+      - name: Verify NewLifeItaly acceptance criteria in patched source
+        shell: pwsh
+        run: |
+          $network = Get-Content "indra\newview\llviewernetwork.cpp" -Raw
+          if ($network -notmatch 'NLI_GRID_NAME = "newlifeitaly\.com:8002"') {
+            throw "NewLifeItaly grid constant is missing."
+          }
+          if ($network -notmatch 'NewLifeItaly login lock rejected grid') {
+            throw "Network-level alternate-grid rejection is missing."
+          }
+          if ($network -notmatch 'mGrid = NLI_GRID_NAME') {
+            throw "Startup is not hard-locked to NewLifeItaly."
+          }
+
+          $commands = Get-Content "indra\newview\app_settings\commands.xml" -Raw
+          if ($commands -notmatch 'name="voice"[\s\S]*?label_ref="Command_NLI_Multiview_Label"[\s\S]*?execute_parameters="nli_media"') {
+            throw "Native voice command is not wired to the NewLifeItaly Cam/Mic panel."
+          }
+
+          $toolbar = Get-Content "indra\newview\lltoolbarview.cpp" -Raw
+          if ($toolbar -notmatch 'const LLCommandId nli_media_command\("voice"\)') {
+            throw "Mandatory Cam/Mic toolbar injection is missing."
+          }
+
+          $preferences = Get-Content "indra\newview\skins\default\xui\en\floater_preferences.xml" -Raw
+          if ($preferences -match 'filename="panel_preferences_opensim\.xml"') {
+            throw "OpenSim/Grid Manager preferences are still exposed."
+          }
+
+          $login = Get-Content "indra\newview\skins\default\xui\en\panel_login.xml" -Raw
+          if ($login -notmatch 'name="grid_combo"[\s\S]*?visible="false"') {
+            throw "Login grid selector is not hidden."
+          }
+
+          $resourceScript = Get-Content "indra\newview\res\viewerRes.rc" -Raw
+          if ($resourceScript -notmatch 'ICON\s+"firestorm_icon\.ico"') {
+            throw "Viewer executable resource is not wired to firestorm_icon.ico."
+          }
+
+          $installerTemplate = Get-Content "indra\newview\installers\windows\installer_template.nsi" -Raw
+          if ($installerTemplate -notmatch 'firestorm_icon\$\{ICON_SUFFIX\}\.ico') {
+            throw "NSIS installer icon source is not the expected Firestorm icon slot."
+          }
+
+          Write-Host "Acceptance checks passed: NLI-only login, no Grid Manager, mandatory Cam/Mic toolbar command, Windows icon wiring."
 
       - name: Configure official NewLifeItaly build
         shell: pwsh
@@ -99,7 +175,7 @@ jobs:
             throw "Firestorm llpackage target failed with exit code $LASTEXITCODE"
           }
 
-      - name: Verify installer and create checksum
+      - name: Verify compiled icons, installer and checksum
         shell: pwsh
         run: |
           $buildDir = "build-vc${env:AUTOBUILD_VSVER}-64"
@@ -116,15 +192,71 @@ jobs:
             throw "The Windows installer was not generated by llpackage."
           }
 
+          Add-Type -AssemblyName System.Drawing
+          function Get-IconPixelHash([string]$Path, [bool]$FromExecutable) {
+            $resolved = (Resolve-Path -LiteralPath $Path).Path
+            $icon = $null
+            $bitmap = $null
+            $graphics = $null
+            $stream = $null
+            $sha = $null
+            try {
+              if ($FromExecutable) {
+                $icon = [System.Drawing.Icon]::ExtractAssociatedIcon($resolved)
+              } else {
+                $icon = New-Object System.Drawing.Icon($resolved, 32, 32)
+              }
+              if (-not $icon) {
+                throw "Unable to extract icon from $Path"
+              }
+              $bitmap = New-Object System.Drawing.Bitmap 32, 32
+              $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+              $graphics.Clear([System.Drawing.Color]::Transparent)
+              $graphics.DrawIcon($icon, 0, 0)
+              $stream = New-Object System.IO.MemoryStream
+              $bitmap.Save($stream, [System.Drawing.Imaging.ImageFormat]::Png)
+              $sha = [System.Security.Cryptography.SHA256]::Create()
+              return ([BitConverter]::ToString($sha.ComputeHash($stream.ToArray()))).Replace("-", "").ToLowerInvariant()
+            } finally {
+              if ($sha) { $sha.Dispose() }
+              if ($stream) { $stream.Dispose() }
+              if ($graphics) { $graphics.Dispose() }
+              if ($bitmap) { $bitmap.Dispose() }
+              if ($icon) { $icon.Dispose() }
+            }
+          }
+
+          $brandingIcon = "newlifeitaly\branding\icons\firestorm_icon.ico"
+          $expectedIconHash = Get-IconPixelHash $brandingIcon $false
+          $installerIconHash = Get-IconPixelHash $installer.FullName $true
+          if ($installerIconHash -ne $expectedIconHash) {
+            throw "Compiled installer icon does not match the NewLifeItaly icon."
+          }
+
+          $viewerExe = Get-ChildItem -LiteralPath $buildDir -Filter "*.exe" -File -Recurse -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -ne $installer.FullName -and $_.Name -notmatch 'uninst|crash|plugin|slplugin|win_crash_logger' } |
+            Sort-Object Length -Descending |
+            Select-Object -First 1
+          if (-not $viewerExe) {
+            throw "Unable to locate the compiled viewer executable for icon validation."
+          }
+          $viewerIconHash = Get-IconPixelHash $viewerExe.FullName $true
+          if ($viewerIconHash -ne $expectedIconHash) {
+            throw "Compiled Viewer executable icon does not match the NewLifeItaly icon. Candidate: $($viewerExe.FullName)"
+          }
+
+          Write-Host "Verified NewLifeItaly icon in installer: $($installer.FullName)"
+          Write-Host "Verified NewLifeItaly icon in viewer: $($viewerExe.FullName)"
+
           $artifactDir = Join-Path $env:GITHUB_WORKSPACE "newlife-artifact"
           New-Item -ItemType Directory -Force -Path $artifactDir | Out-Null
 
-          $stableInstaller = Join-Path $artifactDir "NewLifeItaly-Viewer-Windows-x64-Setup-v2.exe"
+          $stableInstaller = Join-Path $artifactDir "NewLifeItaly-Viewer-Windows-x64-Setup-v3.exe"
           Copy-Item -LiteralPath $installer.FullName -Destination $stableInstaller -Force
 
           $hash = (Get-FileHash -LiteralPath $stableInstaller -Algorithm SHA256).Hash.ToLower()
           $checksumPath = "$stableInstaller.sha256"
-          "$hash  NewLifeItaly-Viewer-Windows-x64-Setup-v2.exe" | Set-Content -LiteralPath $checksumPath -Encoding ascii
+          "$hash  NewLifeItaly-Viewer-Windows-x64-Setup-v3.exe" | Set-Content -LiteralPath $checksumPath -Encoding ascii
 
           Write-Host "Installer source: $($installer.FullName)"
           Write-Host "Staged installer: $stableInstaller"
@@ -133,9 +265,9 @@ jobs:
       - name: Upload installable package
         uses: actions/upload-artifact@v4
         with:
-          name: NewLifeItaly-Viewer-Windows-x64
+          name: NewLifeItaly-Viewer-Windows-x64-v3
           path: |
-            newlife-artifact/NewLifeItaly-Viewer-Windows-x64-Setup-v2.exe
-            newlife-artifact/NewLifeItaly-Viewer-Windows-x64-Setup-v2.exe.sha256
+            newlife-artifact/NewLifeItaly-Viewer-Windows-x64-Setup-v3.exe
+            newlife-artifact/NewLifeItaly-Viewer-Windows-x64-Setup-v3.exe.sha256
           if-no-files-found: error
           retention-days: 14
