@@ -90,6 +90,7 @@ jobs:
           Copy-Item "newlifeitaly\branding\icons\firestorm_*.png" "indra\newview\icons\release-os\" -Force
           Copy-Item "newlifeitaly\branding\icons\firestorm_icon.ico" "indra\newview\icons\release-os\firestorm_icon.ico" -Force
           Copy-Item "newlifeitaly\branding\icons\firestorm_icon.ico" "indra\newview\res\firestorm_icon.ico" -Force
+          Copy-Item "newlifeitaly\branding\icons\firestorm_icon.ico" "indra\newview\res\ll_icon_small.ico" -Force
           Copy-Item "newlifeitaly\branding\icons\firestorm_icon.ico" "indra\newview\installers\windows\firestorm_icon.ico" -Force
           Copy-Item "newlifeitaly\branding\icons\firestorm_icon.ico" "indra\newview\installers\windows\firestorm_icon_os.ico" -Force
 
@@ -107,6 +108,7 @@ jobs:
           @(
             "indra\newview\icons\release-os\firestorm_icon.ico",
             "indra\newview\res\firestorm_icon.ico",
+            "indra\newview\res\ll_icon_small.ico",
             "indra\newview\installers\windows\firestorm_icon.ico",
             "indra\newview\installers\windows\firestorm_icon_os.ico"
           ) | ForEach-Object {
@@ -181,10 +183,21 @@ jobs:
             Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
           if (-not $installer) { throw "Windows Setup was not generated" }
 
-          $viewerExe = Get-ChildItem $buildDir -Filter "*.exe" -File -Recurse -ErrorAction SilentlyContinue |
-            Where-Object { $_.FullName -ne $installer.FullName -and $_.Name -notmatch 'uninst|crash|plugin|slplugin|win_crash_logger' } |
-            Sort-Object Length -Descending | Select-Object -First 1
-          if (-not $viewerExe) { throw "Compiled Viewer executable not found" }
+          $viewerCandidates = Get-ChildItem $buildDir -Filter "*.exe" -File -Recurse -ErrorAction SilentlyContinue |
+            Where-Object {
+              $_.FullName -ne $installer.FullName -and
+              $_.Name -notmatch 'uninst|crash|plugin|slplugin|win_crash_logger|updater|autobuild'
+            } |
+            Sort-Object Length -Descending
+          $viewerExe = $viewerCandidates |
+            Where-Object { $_.Name -match 'NewLifeItaly|Firestorm-NewLifeItaly' } |
+            Select-Object -First 1
+          if (-not $viewerExe) {
+            Write-Host "Viewer executable candidates:"
+            $viewerCandidates | Select-Object FullName, Name, Length | Format-Table -AutoSize
+            throw "Compiled NewLifeItaly Viewer executable not found"
+          }
+          Write-Host "Selected Viewer executable: $($viewerExe.FullName)"
 
           Add-Type -AssemblyName System.Drawing
           function Get-IconHash([string]$Path, [bool]$Executable) {
