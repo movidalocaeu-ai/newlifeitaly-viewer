@@ -840,7 +840,7 @@ new file mode 100644
 index 00000000..a9655c70
 --- /dev/null
 +++ b/indra/newview/skins/default/xui/en/floater_nli_media.xml
-@@ -0,0 +1,74 @@
+@@ -0,0 +1,75 @@
 +<?xml version="1.0" encoding="utf-8" standalone="yes"?>
 +<floater
 + can_close="true"
@@ -908,16 +908,17 @@ index 00000000..a9655c70
 +   value="The owner can disable camera or microphone for this region." />
 +  <web_browser
 +   border_visible="false"
-+   bottom="0"
++   bottom="-1"
 +   follows="all"
 +   focus_on_click="true"
 +   initial_mime_type="text/html"
-+   left="0"
++   layout="topleft"
++   left="1"
 +   media_stream_enabled="true"
 +   name="media_browser"
-+   right="0"
++   right="-1"
 +   start_url=""
-+   top="0"
++   top="1"
 +   trusted_content="false" />
 +</floater>
 diff --git a/indra/newview/skins/default/xui/en/strings.xml b/indra/newview/skins/default/xui/en/strings.xml

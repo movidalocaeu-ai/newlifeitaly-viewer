@@ -142,6 +142,8 @@ jobs:
           $mediaLayout = Get-Content "indra\newview\skins\default\xui\en\floater_nli_media.xml" -Raw
           if ($mediaLayout -notmatch 'min_width="260"') { throw "Cam/Mic minimum width is incorrect" }
           if ($mediaLayout -notmatch 'width="285"') { throw "Cam/Mic initial width is not the approved narrow rail" }
+          if ($mediaLayout -notmatch '(?s)<web_browser.*?bottom="-1".*?layout="topleft".*?left="1".*?right="-1".*?top="1"') { throw "Cam/Mic browser does not fill the narrow rail" }
+          if ($mediaLayout -match '(?s)<web_browser.*?(?:bottom|right)="0"') { throw "Cam/Mic browser still has zero-size XUI anchors" }
 
           $commands = Get-Content "indra\newview\app_settings\commands.xml" -Raw
           if ($commands -notmatch 'name="voice"[\s\S]*?label_ref="Command_NLI_Multiview_Label"[\s\S]*?execute_parameters="nli_media"') { throw "Cam/Mic command is not wired" }
