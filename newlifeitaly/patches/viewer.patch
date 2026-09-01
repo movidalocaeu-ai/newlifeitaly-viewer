@@ -177,7 +177,7 @@ new file mode 100644
 index 00000000..8c295ddb
 --- /dev/null
 +++ b/indra/newview/llfloaternlimedia.cpp
-@@ -0,0 +1,396 @@
+@@ -0,0 +1,397 @@
 +/**
 + * @file llfloaternlimedia.cpp
 + * @brief NewLifeItaly region-scoped camera and microphone panel.
@@ -239,20 +239,22 @@ index 00000000..8c295ddb
 +void LLFloaterNLIMedia::onOpen(const LLSD& key)
 +{
 +    LLFloater::onOpen(key);
-+    // Open as a responsive right-hand media panel without covering the whole view.
++    // Open as a narrow right-hand camera rail without covering the avatar or land.
 +    if (gFloaterView)
 +    {
 +        const LLRect view_rect = gFloaterView->getRect();
 +        const S32 margin = 8;
-+        const S32 available_width = llmax(320, view_rect.getWidth() - (margin * 2));
-+        const S32 target_width = llclamp(view_rect.getWidth() * 2 / 3, 640, 960);
-+        const S32 rail_width = llmin(target_width, available_width);
++        const S32 rail_width = llmin(285, view_rect.getWidth() - (margin * 2));
 +        const S32 rail_height = llmin(760, view_rect.getHeight() - (margin * 2));
 +        setShape(LLRect(view_rect.mRight - rail_width - margin,
 +                        view_rect.mTop - margin,
 +                        view_rect.mRight - margin,
 +                        view_rect.mTop - rail_height - margin));
 +    }
++    // CEF needs an explicit initial texture size in the narrow rail; otherwise
++    // it can remain blank until the user manually resizes the floater.
++    const LLRect browser_rect = mBrowser->getRect();
++    mBrowser->reshape(browser_rect.getWidth(), browser_rect.getHeight(), false);
 +    ensureLoaded();
 +}
 +
@@ -846,11 +848,11 @@ index 00000000..a9655c70
 + can_resize="true"
 + height="760"
 + min_height="360"
-+ min_width="560"
++ min_width="260"
 + name="nli_media"
 + save_rect="false"
 + title="NewLifeItaly Cam &amp; Microphone"
-+ width="700">
++ width="285">
 +  <floater.string name="loading_text">Connecting to the regional media service…</floater.string>
 +  <floater.string name="connected_text">Connected. Regional permissions are being checked…</floater.string>
 +  <floater.string name="authenticating_text">Verifying the avatar session…</floater.string>

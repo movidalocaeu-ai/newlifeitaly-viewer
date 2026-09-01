@@ -136,11 +136,12 @@ jobs:
           if ($network -notmatch 'grid_name\.empty\(\) \|\| grid_name != NLI_GRID_NAME') { throw "Alternate grids can still be selected" }
 
           $mediaFloater = Get-Content "indra\newview\llfloaternlimedia.cpp" -Raw
-          if ($mediaFloater -notmatch 'target_width = llclamp\(view_rect\.getWidth\(\) \* 2 / 3, 640, 960\)') { throw "Cam/Mic panel is not responsive" }
+          if ($mediaFloater -notmatch 'rail_width = llmin\(285, view_rect\.getWidth\(\) - \(margin \* 2\)\)') { throw "Cam/Mic panel is not the approved narrow rail" }
+          if ($mediaFloater -notmatch 'mBrowser->reshape\(browser_rect\.getWidth\(\), browser_rect\.getHeight\(\), false\)') { throw "Cam/Mic browser initial reshape is missing" }
 
           $mediaLayout = Get-Content "indra\newview\skins\default\xui\en\floater_nli_media.xml" -Raw
-          if ($mediaLayout -notmatch 'min_width="560"') { throw "Cam/Mic minimum width is too small" }
-          if ($mediaLayout -notmatch 'width="700"') { throw "Cam/Mic initial width is incorrect" }
+          if ($mediaLayout -notmatch 'min_width="260"') { throw "Cam/Mic minimum width is incorrect" }
+          if ($mediaLayout -notmatch 'width="285"') { throw "Cam/Mic initial width is not the approved narrow rail" }
 
           $commands = Get-Content "indra\newview\app_settings\commands.xml" -Raw
           if ($commands -notmatch 'name="voice"[\s\S]*?label_ref="Command_NLI_Multiview_Label"[\s\S]*?execute_parameters="nli_media"') { throw "Cam/Mic command is not wired" }
