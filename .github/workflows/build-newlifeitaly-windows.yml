@@ -46,8 +46,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Python build dependencies failed" }
           choco install nsis -y --no-progress
           if ($LASTEXITCODE -ne 0) { throw "NSIS installation failed" }
-          npm install --global rcedit
+          npm install --no-save rcedit@5.0.2
           if ($LASTEXITCODE -ne 0) { throw "rcedit installation failed" }
+          $rceditExe = Join-Path $PWD "node_modules\\rcedit\\bin\\rcedit-x64.exe"
+          if (-not (Test-Path -LiteralPath $rceditExe)) { throw "Vendored rcedit executable not found: $rceditExe" }
+          & $rceditExe --help | Select-Object -First 1
+          if ($LASTEXITCODE -ne 0) { throw "rcedit executable validation failed" }
           "C:\Program Files\Git\usr\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           "C:\Program Files (x86)\NSIS" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
@@ -176,7 +180,10 @@ jobs:
 
           $compiledViewer = Join-Path $buildDir "newview\\Release\\firestorm-bin.exe"
           if (-not (Test-Path -LiteralPath $compiledViewer)) { throw "Compiled Viewer executable not found: $compiledViewer" }
-          rcedit $compiledViewer --set-icon "newlifeitaly\\branding\\icons\\firestorm_icon.ico"
+          $rceditExe = Join-Path $PWD "node_modules\\rcedit\\bin\\rcedit-x64.exe"
+          if (-not (Test-Path -LiteralPath $rceditExe)) { throw "Vendored rcedit executable not found: $rceditExe" }
+          $nliIcon = (Resolve-Path "newlifeitaly\\branding\\icons\\firestorm_icon.ico").Path
+          & $rceditExe $compiledViewer --set-icon $nliIcon
           if ($LASTEXITCODE -ne 0) { throw "Embedding NewLifeItaly icon into Viewer EXE failed" }
 
           cmake --build $buildDir --config Release --target llpackage
